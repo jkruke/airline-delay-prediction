@@ -22,6 +22,16 @@ def get_delays():
     return delays
 
 
+def add_country_codes(delays, airports):
+    airports["arr_iata"] = airports["iata_code"]
+    airports["dep_iata"] = airports["iata_code"]
+    airports["arr_country_code"] = airports["country_code"]
+    airports["dep_country_code"] = airports["country_code"]
+    delays = pd.merge(delays, airports[["arr_country_code", "arr_iata"]], on="arr_iata", how="inner")
+    delays = pd.merge(delays, airports[["dep_country_code", "dep_iata"]], on="dep_iata", how="inner")
+    return delays
+
+
 def main():
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
@@ -30,12 +40,7 @@ def main():
     delays = get_delays()
     print(f"Total delays worldwide: {len(delays)}")
     airports = pd.read_json("data/airports.json")
-    airports["arr_iata"] = airports["iata_code"]
-    airports["dep_iata"] = airports["iata_code"]
-    airports["arr_country_code"] = airports["country_code"]
-    airports["dep_country_code"] = airports["country_code"]
-    delays = pd.merge(delays, airports[["arr_country_code", "arr_iata"]], on="arr_iata", how="inner")
-    delays = pd.merge(delays, airports[["dep_country_code", "dep_iata"]], on="dep_iata", how="inner")
+    delays = add_country_codes(delays, airports)
     delays["domestic"] = delays["arr_country_code"] == delays["dep_country_code"]
     delays["international"] = ~delays["domestic"]
     print("Delays:")
