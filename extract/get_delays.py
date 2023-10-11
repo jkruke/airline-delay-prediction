@@ -1,25 +1,46 @@
+#!/bin/python3
+
+# This file will be scheduled by cron to run periodically
+
 from datetime import datetime
 
 import pandas as pd
 import requests
+import time
 
-from extract.config import config
-
+import config
 
 # you can use OFFLINE_MODE during development to save API calls (uses local files instead):
 OFFLINE_MODE = True
 
+## QUERY DATA
+# Query for flights with at least this much delays
+# should be >30
+MIN_DELAY = 31  
+
+# Delay type. "departures" or "arrivals"
+DELAY_TYPE="departures"
+
+# How many times we should retry downloading
+# if our response is not 200 (OK)
+ERROR_RETRIES = 5 
+ERROR_RETRY_WAIT_TIME = 60    # secs
 
 def get_delays():
     if OFFLINE_MODE:
         delays = pd.read_csv("data/delays/delays-sample.csv")
     else:
-        url = (f"https://airlabs.co/api/v9/delays?delay={MIN_DELAY}"
-               f"&type=departures&api_key={config.api_key}")
+        while (ERROR_RETRIES > 0):
+            url = (f"https://airlabs.co/api/v9/delays?delay={MIN_DELAY}"
+           f"&type={DELAY_TYPE}&api_key={config.api_key}")
         print(f"Requesting {url}")
-        data = requests.get(url).json()
-        delays = pd.json_normalize(data['response'])
-    return delays
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            delays = pd.json_normalize(data['response'])
+            return delays
+        time.sleep(ERROR_RETRY_WAIT_TIME)
+    return None 
 
 
 def add_country_codes(delays, airports):
@@ -38,6 +59,11 @@ def main():
     pd.set_option('display.max_rows', 5)
 
     delays = get_delays()
+
+    if delays == None:
+        print(f"ERROR! CAN'T FETCH DATA FROM AIRLAB!")
+        return
+
     print(f"Total delays worldwide: {len(delays)}")
     airports = pd.read_json("data/airports.json")
     delays = add_country_codes(delays, airports)
@@ -48,9 +74,10 @@ def main():
     print(delays)
     delays = delays[["flight_number", "airline_iata", "dep_time_utc", "dep_estimated_utc", "arr_time_utc",
                      "arr_estimated_utc", "dep_country_code", "arr_country_code", "domestic", "international", "delayed"]]
-    delays.to_csv(f"data/delays/delays-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv")
+                     
+    # Appends to existing file
+    delays.to_csv(f"data/delays/delays-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", mode='a')
 
 
 if __name__ == '__main__':
-    MIN_DELAY = 31  # should be >30
     main()
