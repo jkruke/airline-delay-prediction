@@ -8,7 +8,7 @@ import pandas as pd
 import requests
 import time
 
-import config
+from config import config
 
 # you can use OFFLINE_MODE during development to save API calls (uses local files instead):
 OFFLINE_MODE = True
@@ -16,31 +16,37 @@ OFFLINE_MODE = True
 ## QUERY DATA
 # Query for flights with at least this much delays
 # should be >30
-MIN_DELAY = 31  
+MIN_DELAY = 31
 
 # Delay type. "departures" or "arrivals"
 DELAY_TYPE="departures"
 
 # How many times we should retry downloading
 # if our response is not 200 (OK)
-ERROR_RETRIES = 5 
-ERROR_RETRY_WAIT_TIME = 60    # secs
+ERROR_RETRIES = 5
+ERROR_RETRY_WAIT_TIME = 1    # secs
+
 
 def get_delays():
     if OFFLINE_MODE:
         delays = pd.read_csv("data/delays/delays-sample.csv")
+        return delays
     else:
-        while (ERROR_RETRIES > 0):
+        retries = 0
+        while retries < ERROR_RETRIES:
             url = (f"https://airlabs.co/api/v9/delays?delay={MIN_DELAY}"
-           f"&type={DELAY_TYPE}&api_key={config.api_key}")
-        print(f"Requesting {url}")
-        response = requests.get(url)
-        if response.status_code == 200:
+                   f"&type={DELAY_TYPE}&api_key={config.api_key}")
+            print(f"Requesting {url}")
+            response = requests.get(url)
             data = response.json()
-            delays = pd.json_normalize(data['response'])
-            return delays
-        time.sleep(ERROR_RETRY_WAIT_TIME)
-    return None 
+            if 'response' in data:
+                delays = pd.json_normalize(data['response'])
+                return delays
+
+            retries += 1
+            print("Request failed")
+            time.sleep(ERROR_RETRY_WAIT_TIME)
+    return None
 
 
 def add_country_codes(delays, airports):
@@ -60,7 +66,7 @@ def main():
 
     delays = get_delays()
 
-    if delays == None:
+    if delays is None:
         print(f"ERROR! CAN'T FETCH DATA FROM AIRLAB!")
         return
 
@@ -74,7 +80,7 @@ def main():
     print(delays)
     delays = delays[["flight_number", "airline_iata", "dep_time_utc", "dep_estimated_utc", "arr_time_utc",
                      "arr_estimated_utc", "dep_country_code", "arr_country_code", "domestic", "international", "delayed"]]
-                     
+
     # Appends to existing file
     delays.to_csv(f"data/delays/delays-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", mode='a')
 
