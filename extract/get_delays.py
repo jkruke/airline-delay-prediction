@@ -1,5 +1,5 @@
 #!/bin/python3
-
+import os.path
 # This file will be scheduled by cron to run periodically
 
 from datetime import datetime
@@ -10,8 +10,10 @@ import time
 
 from config import config
 
+DELAYS_FILE = "data/delays/delays.csv"
+
 # you can use OFFLINE_MODE during development to save API calls (uses local files instead):
-OFFLINE_MODE = True
+OFFLINE_MODE = False
 
 ## QUERY DATA
 # Query for flights with at least this much delays
@@ -29,7 +31,7 @@ ERROR_RETRY_WAIT_TIME = 1    # secs
 
 def get_delays():
     if OFFLINE_MODE:
-        delays = pd.read_csv("data/delays/delays-sample.csv")
+        delays = pd.read_csv("data/delays/delays-sample.csv", index_col=0)
         return delays
     else:
         retries = 0
@@ -59,6 +61,19 @@ def add_country_codes(delays, airports):
     return delays
 
 
+def get_alltime_delays(new_delays, known_delays_file=DELAYS_FILE):
+    if not os.path.exists(known_delays_file):
+        print(f"{known_delays_file} does not exist - alltime delays will only contain the current (new) delays")
+        return new_delays
+
+    known_delays = pd.read_csv(known_delays_file)
+    alltime_delays = pd.concat([known_delays, new_delays], ignore_index=True)
+    # if we find identical flights, we only keep the most recent (from new_delays) one:
+    alltime_delays = alltime_delays.drop_duplicates(subset=["flight_iata", "dep_time_utc"], keep="last")
+    print(f"Merged {len(known_delays)} known delays with {len(new_delays)} new delays.")
+    return alltime_delays
+
+
 def main():
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
@@ -75,14 +90,20 @@ def main():
     delays = add_country_codes(delays, airports)
     delays["domestic"] = delays["arr_country_code"] == delays["dep_country_code"]
     delays["international"] = ~delays["domestic"]
-    print("Delays:")
-    delays.info()
-    print(delays)
-    delays = delays[["flight_number", "airline_iata", "dep_time_utc", "dep_estimated_utc", "arr_time_utc",
+    delays = delays[["flight_iata", "airline_iata", "dep_time_utc", "dep_estimated_utc", "arr_time_utc",
                      "arr_estimated_utc", "dep_country_code", "arr_country_code", "domestic", "international", "delayed"]]
 
-    # Appends to existing file
-    delays.to_csv(f"data/delays/delays-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", mode='a')
+    alltime_delays = get_alltime_delays(delays)
+
+    print("\nDelays:")
+    print(delays)
+    print("\nAlltime delays:")
+    print(alltime_delays)
+
+    # Write current delays to separate file
+    delays.to_csv(f"data/delays/delays-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", index=False)
+    # Write alltime delays to delays file
+    alltime_delays.to_csv(DELAYS_FILE, index=False)
 
 
 if __name__ == '__main__':
