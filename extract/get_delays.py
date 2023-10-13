@@ -9,6 +9,7 @@ import requests
 import time
 
 from config import config
+from extract.constants import constants
 
 DELAYS_FILE = "data/delays/delays.csv"
 
@@ -90,8 +91,7 @@ def main():
     delays = add_country_codes(delays, airports)
     delays["domestic"] = delays["arr_country_code"] == delays["dep_country_code"]
     delays["international"] = ~delays["domestic"]
-    delays = delays[["flight_iata", "airline_iata", "dep_time_utc", "dep_estimated_utc", "arr_time_utc",
-                     "arr_estimated_utc", "dep_country_code", "arr_country_code", "domestic", "international", "delayed"]]
+    delays = delays[constants.target_csv_columns]
 
     alltime_delays = get_alltime_delays(delays)
 
