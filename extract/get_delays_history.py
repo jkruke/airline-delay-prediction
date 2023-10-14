@@ -9,6 +9,7 @@ from extract.constants import constants
 
 
 class DelayHistoryFetcher:
+    # all civil airports in Vietnam:
     airports = ["BMV", "CAH", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "KON", "DLI", "SQH", "NHA",
                 "HOO", "HAN", "PHA", "HUI", "UIH", "PQC", "PHU", "VSO", "PXU", "XNG", "VKG", "SOA", "TMK", "SGN", "THD",
                 "VDO", "VII", "VTG"]
@@ -27,15 +28,20 @@ class DelayHistoryFetcher:
     def extract_flights(self):
         print("\nCurrent stage: EXTRACT\n")
         dataframes = []
-        for airport in self.airports:
-            url = (f"https://aviation-edge.com/v2/public/flightsHistory?code={airport}&type=arrival&"
-                   f"date_from={self.date_from}&key={config.aviation_edge_key}&date_to={self.date_to}")
-            print(f"Requesting {url}")
-            response = requests.get(url)
-            data = response.json()
-            airport_flights = pd.json_normalize(data)
-            print(f"Found {len(airport_flights)} flights for airport {airport}")
-            dataframes.append(airport_flights)
+        for t in ["arrival", "departure"]:
+            for airport in self.airports:
+                url = (f"https://aviation-edge.com/v2/public/flightsHistory?code={airport}&type={t}&"
+                       f"date_from={self.date_from}&key={config.aviation_edge_key}&date_to={self.date_to}")
+                print(f"Requesting {url}")
+                response = requests.get(url)
+                data = response.json()
+                if "error" in data:
+                    print(f"Skipping {airport} ({data['error']})")
+                    continue
+
+                airport_flights = pd.json_normalize(data)
+                print(f"Found {len(airport_flights)} flights for airport {airport}")
+                dataframes.append(airport_flights)
         all_flights = pd.concat(dataframes, ignore_index=True)
         print("All flights:")
         print(all_flights)
