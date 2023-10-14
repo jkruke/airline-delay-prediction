@@ -1,6 +1,6 @@
 import requests
 
-from extract.config import config
+from config import config
 
 
 def main():

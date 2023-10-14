@@ -4,8 +4,8 @@ import pandas as pd
 import requests
 from pandas import DataFrame
 
-from extract.config import config
-from extract.constants import constants
+from config import config
+from constants import constants
 
 
 class DelayHistoryFetcher:

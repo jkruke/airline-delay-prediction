@@ -9,7 +9,7 @@ import requests
 import time
 
 from config import config
-from extract.constants import constants
+from constants import constants
 
 DELAYS_FILE = "data/delays/delays.csv"
 
