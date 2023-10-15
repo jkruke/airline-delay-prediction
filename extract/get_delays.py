@@ -11,23 +11,8 @@ import time
 from config import config
 from constants import constants
 
-DELAYS_FILE = "data/delays/delays.csv"
-
 # you can use OFFLINE_MODE during development to save API calls (uses local files instead):
 OFFLINE_MODE = False
-
-## QUERY DATA
-# Query for flights with at least this much delays
-# should be >30
-MIN_DELAY = 31
-
-# Delay type. "departures" or "arrivals"
-DELAY_TYPE="departures"
-
-# How many times we should retry downloading
-# if our response is not 200 (OK)
-ERROR_RETRIES = 5
-ERROR_RETRY_WAIT_TIME = 1    # secs
 
 
 def get_delays():
@@ -36,19 +21,20 @@ def get_delays():
         return delays
     else:
         retries = 0
-        while retries < ERROR_RETRIES:
-            url = (f"https://airlabs.co/api/v9/delays?delay={MIN_DELAY}"
-                   f"&type={DELAY_TYPE}&api_key={config.api_key}")
+        while retries < config.error_download_retries:
+            url = (f"https://airlabs.co/api/v9/delays?delay={config.min_delay}"
+                   f"&type={config.delay_type}&api_key={config.api_key}")
             print(f"Requesting {url}")
             response = requests.get(url)
             data = response.json()
             if 'response' in data:
                 delays = pd.json_normalize(data['response'])
+                print("Request succeeded")
                 return delays
 
             retries += 1
             print("Request failed")
-            time.sleep(ERROR_RETRY_WAIT_TIME)
+            time.sleep(config.error_download_wait_time)
     return None
 
 
@@ -62,7 +48,7 @@ def add_country_codes(delays, airports):
     return delays
 
 
-def get_alltime_delays(new_delays, known_delays_file=DELAYS_FILE):
+def get_alltime_delays(new_delays, known_delays_file=config.delay_file):
     if not os.path.exists(known_delays_file):
         print(f"{known_delays_file} does not exist - alltime delays will only contain the current (new) delays")
         return new_delays
@@ -95,15 +81,15 @@ def main():
 
     alltime_delays = get_alltime_delays(delays)
 
-    print("\nDelays:")
-    print(delays)
-    print("\nAlltime delays:")
-    print(alltime_delays)
+    #print("\nDelays:")
+    #print(delays)
+    #print("\nAlltime delays:")
+    #print(alltime_delays)
 
     # Write current delays to separate file
     delays.to_csv(f"data/delays/delays-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", index=False)
     # Write alltime delays to delays file
-    alltime_delays.to_csv(DELAYS_FILE, index=False)
+    alltime_delays.to_csv(config.delay_file, index=False)
 
 
 if __name__ == '__main__':
