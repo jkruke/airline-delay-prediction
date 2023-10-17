@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 import requests
+from dateutil.relativedelta import relativedelta
 from pandas import DataFrame
 
 from config import config
@@ -11,9 +12,9 @@ from constants import constants
 
 class DelayHistoryFetcher:
     # all civil airports in Vietnam:
-    airports = ["HAN"]
-    date_from = "2023-10-01"
-    date_to = (datetime.now() - timedelta(days=4)).strftime("%Y-%m-%d")
+    airports = ["HAN", "SGN", "BMV", "CAH", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "KON", "DLI",
+                "SQH", "NHA", "HOO", "PHA", "HUI", "UIH", "PQC", "PHU", "VSO", "PXU", "XNG", "VKG", "SOA", "TMK", "THD",
+                "VDO", "VII", "VTG"]
 
     def fetch(self):
         # ETL: extract-transform-load
@@ -27,20 +28,31 @@ class DelayHistoryFetcher:
     def extract_flights(self):
         print("\nCurrent stage: EXTRACT\n")
         dataframes = []
-        for t in ["arrival", "departure"]:
-            for airport in self.airports:
-                url = (f"https://aviation-edge.com/v2/public/flightsHistory?code={airport}&type={t}&"
-                       f"date_from={self.date_from}&key={config.aviation_edge_key}&date_to={self.date_to}")
-                print(f"Requesting {url}")
-                response = requests.get(url)
-                data = response.json()
-                if "error" in data:
-                    print(f"Skipping {airport} ({data['error']})")
-                    continue
+        day_range = 10
+        max_date = datetime.now() - timedelta(days=4)
+        date_from = datetime.now() - relativedelta(years=1) + timedelta(days=1)
+        date_to = date_from + timedelta(days=day_range)
 
-                airport_flights = pd.json_normalize(data)
-                print(f"Found {len(airport_flights)} flights with {t} at {airport}")
-                dataframes.append(airport_flights)
+        while date_to <= max_date:
+            print(f"Collecting time range: {date_from} to {date_to}:")
+            for t in ["arrival", "departure"]:
+                for airport in self.airports:
+                    d_from = date_from.strftime("%Y-%m-%d")
+                    d_to = date_to.strftime("%Y-%m-%d")
+                    url = (f"https://aviation-edge.com/v2/public/flightsHistory?code={airport}&type={t}&"
+                           f"date_from={d_from}&date_to={d_to}&key={config.aviation_edge_key}")
+                    print(f"Requesting {url}")
+                    response = requests.get(url)
+                    data = response.json()
+                    if "error" in data:
+                        print(f"Skipping {airport} ({data['error']})")
+                        continue
+
+                    airport_flights = pd.json_normalize(data)
+                    print(f"Found {len(airport_flights)} flights with {t} at {airport}")
+                    dataframes.append(airport_flights)
+            date_from = date_to + timedelta(days=1)
+            date_to = date_from + timedelta(days=day_range)
         all_flights = pd.concat(dataframes, ignore_index=True)
         print("All flights:")
         print(all_flights)
@@ -103,7 +115,7 @@ class DelayHistoryFetcher:
         # calculate the delay in minutes and assign it to 'delayed' where it's missing
         flights['delayed'] = flights.apply(lambda row: int((row['arr_actual_utc'] - row['arr_time_utc'])
                                                            .total_seconds() / 60)
-                                                       if math.isnan(float(row['delayed'])) else row['delayed'], axis=1)
+        if math.isnan(float(row['delayed'])) else row['delayed'], axis=1)
 
         return flights
 
