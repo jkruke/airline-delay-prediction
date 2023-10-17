@@ -11,9 +11,7 @@ from constants import constants
 
 class DelayHistoryFetcher:
     # all civil airports in Vietnam:
-    airports = ["BMV", "CAH", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "KON", "DLI", "SQH", "NHA",
-                "HOO", "HAN", "PHA", "HUI", "UIH", "PQC", "PHU", "VSO", "PXU", "XNG", "VKG", "SOA", "TMK", "SGN", "THD",
-                "VDO", "VII", "VTG"]
+    airports = ["HAN"]
     date_from = "2023-10-01"
     date_to = (datetime.now() - timedelta(days=4)).strftime("%Y-%m-%d")
 
@@ -53,10 +51,10 @@ class DelayHistoryFetcher:
         transformed = pd.DataFrame(columns=constants.target_csv_columns)
         transformed["flight_iata"] = flights["flight.iataNumber"]
         transformed["airline_iata"] = flights["airline.iataCode"]
-        transformed["dep_time_utc"] = flights["departure.scheduledTime"]
-        transformed["dep_estimated_utc"] = flights["departure.actualTime"]
-        transformed["arr_time_utc"] = flights["arrival.scheduledTime"]
-        transformed["arr_estimated_utc"] = flights["arrival.actualTime"]
+        transformed["dep_time_utc"] = pd.to_datetime(flights["departure.scheduledTime"])
+        transformed["dep_actual_utc"] = pd.to_datetime(flights["departure.actualTime"])
+        transformed["arr_time_utc"] = pd.to_datetime(flights["arrival.scheduledTime"])
+        transformed["arr_actual_utc"] = pd.to_datetime(flights["arrival.actualTime"])
 
         transformed["delayed"] = flights["arrival.delay"]
 
@@ -91,7 +89,7 @@ class DelayHistoryFetcher:
         print("\nCurrent stage: CLEAN\n")
 
         # remove rows where we don't know if there is any delay:
-        valid_flights = flights[(flights["dep_estimated_utc"].notnull() & flights["arr_estimated_utc"].notnull())
+        valid_flights = flights[(flights["arr_time_utc"].notnull() & flights["arr_actual_utc"].notnull())
                                 | flights["delayed"].notnull()]
         n_all_flights = len(flights)
         print(f"Deleted {n_all_flights - len(valid_flights)} of {n_all_flights} rows with unknown delay:")
@@ -102,13 +100,10 @@ class DelayHistoryFetcher:
         valid_flights.reset_index(drop=True, inplace=True)
         flights = valid_flights
 
-        # calculate delay if not already provided
-        flights['arr_estimated_utc'] = pd.to_datetime(flights['arr_estimated_utc'])
-        flights['arr_time_utc'] = pd.to_datetime(flights['arr_time_utc'])
-        # Calculate the difference in minutes and assign it to 'delayed' where it's missing
-        flights['delayed'] = flights.apply(lambda row: int((row['arr_estimated_utc'] - row['arr_time_utc'])
+        # calculate the delay in minutes and assign it to 'delayed' where it's missing
+        flights['delayed'] = flights.apply(lambda row: int((row['arr_actual_utc'] - row['arr_time_utc'])
                                                            .total_seconds() / 60)
-                                                     if math.isnan(float(row['delayed'])) else row['delayed'], axis=1)
+                                                       if math.isnan(float(row['delayed'])) else row['delayed'], axis=1)
 
         return flights
 
@@ -117,4 +112,5 @@ if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
     pd.set_option('display.max_rows', 20)
+
     DelayHistoryFetcher().fetch()
