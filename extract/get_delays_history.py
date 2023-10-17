@@ -1,4 +1,5 @@
 import math
+import os.path
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -13,10 +14,18 @@ from constants import constants
 
 
 class DelayHistoryFetcher:
+    RESULT_CSV = "data/history/flightsHistory.csv"
+    RAW_CSV = "data/history/flightsHistory_raw.csv"
+    INVALID_CSV = "data/history/flightsHistory_invalid.csv"
+
     # all civil airports in Vietnam:
     airports = ["HAN", "SGN", "BMV", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "DLI",
                 "HUI", "UIH", "PQC", "PHU", "PXU", "THD",
                 "VDO", "VII"]
+
+    def __init__(self):
+        if os.path.isfile(self.RAW_CSV):
+            os.remove(self.RAW_CSV)
 
     def fetch(self):
         # ETL: extract-transform-load
@@ -25,7 +34,7 @@ class DelayHistoryFetcher:
         flights = self.clean_flights(flights)
         print("Historical flights after ETL:")
         print(flights)
-        flights.to_csv("data/history/flightsHistory.csv", index=False)
+        flights.to_csv(self.RESULT_CSV, index=False)
 
     def extract_flights(self):
         print("\nCurrent stage: EXTRACT\n")
@@ -57,6 +66,7 @@ class DelayHistoryFetcher:
                     airport_flights = pd.json_normalize(data)
                     print(f"Found {len(airport_flights)} flights with {t} at {airport}")
                     dataframes.append(airport_flights)
+                    airport_flights.to_csv(self.RAW_CSV, index=False, mode='a')
             date_from = date_to + timedelta(days=1)
             date_to = date_from + timedelta(days=day_range)
         all_flights = pd.concat(dataframes, ignore_index=True)
@@ -108,7 +118,7 @@ class DelayHistoryFetcher:
         return flights
 
     @staticmethod
-    def clean_flights(flights: DataFrame):
+    def clean_flights(self, flights: DataFrame):
         print("\nCurrent stage: CLEAN\n")
 
         # remove rows where we don't know if there is any delay:
@@ -118,7 +128,7 @@ class DelayHistoryFetcher:
         print(f"Deleted {n_all_flights - len(valid_flights)} of {n_all_flights} rows with unknown delay:")
         invalid_flights = flights[~flights.index.isin(valid_flights.index)]
         print(invalid_flights)
-        invalid_flights.to_csv("data/history/flightsHistory_invalid.csv", index=False)
+        invalid_flights.to_csv(self.INVALID_CSV, index=False)
 
         valid_flights.reset_index(drop=True, inplace=True)
         flights = valid_flights
