@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -40,7 +41,7 @@ class DelayHistoryFetcher:
                     continue
 
                 airport_flights = pd.json_normalize(data)
-                print(f"Found {len(airport_flights)} flights for airport {airport}")
+                print(f"Found {len(airport_flights)} flights with {t} at {airport}")
                 dataframes.append(airport_flights)
         all_flights = pd.concat(dataframes, ignore_index=True)
         print("All flights:")
@@ -88,16 +89,27 @@ class DelayHistoryFetcher:
     @staticmethod
     def clean_flights(flights: DataFrame):
         print("\nCurrent stage: CLEAN\n")
-        flights["delayed"] = flights["delayed"].fillna(0).astype(int)
 
         # remove rows where we don't know if there is any delay:
-        reduced_flights = flights[flights["dep_estimated_utc"].notnull() & flights["arr_estimated_utc"].notnull()]
-        print(f"Deleted {len(reduced_flights)} of {len(flights)} rows with unknown delay:")
-        diff = pd.concat([flights, reduced_flights]).drop_duplicates(keep=False)
-        print(diff)
-        diff.to_csv("data/history/flightsHistory_invalid.csv")
+        valid_flights = flights[(flights["dep_estimated_utc"].notnull() & flights["arr_estimated_utc"].notnull())
+                                | flights["delayed"].notnull()]
+        n_all_flights = len(flights)
+        print(f"Deleted {n_all_flights - len(valid_flights)} of {n_all_flights} rows with unknown delay:")
+        invalid_flights = flights[~flights.index.isin(valid_flights.index)]
+        print(invalid_flights)
+        invalid_flights.to_csv("data/history/flightsHistory_invalid.csv", index=False)
 
-        reduced_flights.reset_index(drop=True, inplace=True)
+        valid_flights.reset_index(drop=True, inplace=True)
+        flights = valid_flights
+
+        # calculate delay if not already provided
+        flights['arr_estimated_utc'] = pd.to_datetime(flights['arr_estimated_utc'])
+        flights['arr_time_utc'] = pd.to_datetime(flights['arr_time_utc'])
+        # Calculate the difference in minutes and assign it to 'delayed' where it's missing
+        flights['delayed'] = flights.apply(lambda row: int((row['arr_estimated_utc'] - row['arr_time_utc'])
+                                                           .total_seconds() / 60)
+                                                     if math.isnan(float(row['delayed'])) else row['delayed'], axis=1)
+
         return flights
 
 
