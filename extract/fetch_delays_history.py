@@ -1,3 +1,5 @@
+import argparse
+import json
 import math
 import os.path
 from datetime import datetime, timedelta
@@ -13,9 +15,9 @@ from config import config
 from constants import constants
 
 
-class DelayHistoryFetcher:
+class DelayHistoryProcessor:
     RESULT_CSV = "data/history/flightsHistory.csv"
-    RAW_CSV = "data/history/flightsHistory_raw.csv"
+    RAW_DATA_DIR = "data/history/flightsHistory_raw"
     INVALID_CSV = "data/history/flightsHistory_invalid.csv"
 
     # all civil airports in Vietnam:
@@ -23,11 +25,46 @@ class DelayHistoryFetcher:
                 "HUI", "UIH", "PQC", "PHU", "PXU", "THD",
                 "VDO", "VII"]
 
-    def __init__(self):
-        if os.path.isfile(self.RAW_CSV):
-            os.remove(self.RAW_CSV)
+    def collect_flights(self):
+        """
+        Collects historical flights from Aviation Edge API and save results to separate JSON files
+        """
+        dataframes = []
+        day_range = 10
+        max_date = datetime.now() - timedelta(days=4)
+        date_from = datetime.now() - relativedelta(years=1) + timedelta(days=1)
+        date_to = date_from + timedelta(days=day_range)
+        while date_to <= max_date:
+            print(f"Collecting time range: {date_from} to {date_to}:")
+            for t in ["arrival", "departure"]:
+                for airport in self.airports:
+                    d_from = date_from.strftime("%Y-%m-%d")
+                    d_to = date_to.strftime("%Y-%m-%d")
+                    raw_result_file = f"{self.RAW_DATA_DIR}/{d_from}_{d_to}_{airport}_{t}.json"
+                    if os.path.isfile(raw_result_file):
+                        print(f"{raw_result_file} already exists.")
+                        continue
 
-    def fetch(self):
+                    url = (f"https://aviation-edge.com/v2/public/flightsHistory?code={airport}&type={t}&"
+                           f"date_from={d_from}&date_to={d_to}&key={config.aviation_edge_key}")
+                    try:
+                        data = self.do_request(url)
+                    except Exception as e:
+                        print(f"Request to {url} failed: {e}")
+                        continue
+
+                    if "error" in data:
+                        print(f"Skipping {airport} ({data['error']})")
+                        continue
+
+                    with open(raw_result_file, "w") as file:
+                        json.dump(data, file)
+
+            date_from = date_to + timedelta(days=1)
+            date_to = date_from + timedelta(days=day_range)
+        return dataframes
+
+    def etl_flights(self):
         # ETL: extract-transform-load
         flights = self.extract_flights()
         flights = self.transform_flights(flights)
@@ -39,36 +76,13 @@ class DelayHistoryFetcher:
     def extract_flights(self):
         print("\nCurrent stage: EXTRACT\n")
         dataframes = []
-        day_range = 10
-        max_date = datetime.now() - timedelta(days=4)
-        date_from = datetime.now() - relativedelta(years=1) + timedelta(days=1)
-        date_to = date_from + timedelta(days=day_range)
+        for f in os.listdir(self.RAW_DATA_DIR):
+            raw_file = os.path.join(self.RAW_DATA_DIR, f)
+            if os.path.isfile(raw_file):
+                with open(raw_file) as rf:
+                    data = json.load(rf)
+                dataframes.append(pd.json_normalize(data))
 
-        while date_to <= max_date:
-            print(f"Collecting time range: {date_from} to {date_to}:")
-            for t in ["arrival", "departure"]:
-                for airport in self.airports:
-                    d_from = date_from.strftime("%Y-%m-%d")
-                    d_to = date_to.strftime("%Y-%m-%d")
-                    url = (f"https://aviation-edge.com/v2/public/flightsHistory?code={airport}&type={t}&"
-                           f"date_from={d_from}&date_to={d_to}&key={config.aviation_edge_key}")
-                    try:
-                        response = self.do_request(url)
-                    except requests.RequestException as e:
-                        print(f"Request to {url} failed: {e}")
-                        continue
-
-                    data = response.json()
-                    if "error" in data:
-                        print(f"Skipping {airport} ({data['error']})")
-                        continue
-
-                    airport_flights = pd.json_normalize(data)
-                    print(f"Found {len(airport_flights)} flights with {t} at {airport}")
-                    dataframes.append(airport_flights)
-                    airport_flights.to_csv(self.RAW_CSV, index=False, mode='a')
-            date_from = date_to + timedelta(days=1)
-            date_to = date_from + timedelta(days=day_range)
         all_flights = pd.concat(dataframes, ignore_index=True)
         print("All flights:")
         print(all_flights)
@@ -77,7 +91,8 @@ class DelayHistoryFetcher:
     @retry(stop=stop_after_attempt(3), wait=tenacity.wait_fixed(wait=3))
     def do_request(self, url):
         print(f"Requesting {url}")
-        return requests.get(url)
+        response = requests.get(url)
+        return response.json()
 
     def transform_flights(self, flights: DataFrame):
         print("\nCurrent stage: TRANSFORM\n")
@@ -117,7 +132,6 @@ class DelayHistoryFetcher:
 
         return flights
 
-    @staticmethod
     def clean_flights(self, flights: DataFrame):
         print("\nCurrent stage: CLEAN\n")
 
@@ -146,4 +160,17 @@ if __name__ == '__main__':
     pd.set_option('display.width', None)
     pd.set_option('display.max_rows', 20)
 
-    DelayHistoryFetcher().fetch()
+    argParser = argparse.ArgumentParser()
+    argParser.add_argument("-m", "--mode", choices=["collect", "etl"],
+                           help="Execution mode (collect: request API and save to JSON files, "
+                                "etl: do ETL based on the JSON files")
+    args = argParser.parse_args()
+    print(f"program arguments: {args}")
+
+    processor = DelayHistoryProcessor()
+    if args.mode == "collect":
+        processor.collect_flights()
+    elif args.mode == "etl":
+        processor.etl_flights()
+    else:
+        print("NOTHING TO DO!")
