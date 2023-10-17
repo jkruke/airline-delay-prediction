@@ -3,8 +3,10 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 import requests
+import tenacity
 from dateutil.relativedelta import relativedelta
 from pandas import DataFrame
+from tenacity import retry, stop_after_attempt
 
 from config import config
 from constants import constants
@@ -12,9 +14,9 @@ from constants import constants
 
 class DelayHistoryFetcher:
     # all civil airports in Vietnam:
-    airports = ["HAN", "SGN", "BMV", "CAH", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "KON", "DLI",
-                "SQH", "NHA", "HOO", "PHA", "HUI", "UIH", "PQC", "PHU", "VSO", "PXU", "XNG", "VKG", "SOA", "TMK", "THD",
-                "VDO", "VII", "VTG"]
+    airports = ["HAN", "SGN", "BMV", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "DLI",
+                "HUI", "UIH", "PQC", "PHU", "PXU", "THD",
+                "VDO", "VII"]
 
     def fetch(self):
         # ETL: extract-transform-load
@@ -41,8 +43,12 @@ class DelayHistoryFetcher:
                     d_to = date_to.strftime("%Y-%m-%d")
                     url = (f"https://aviation-edge.com/v2/public/flightsHistory?code={airport}&type={t}&"
                            f"date_from={d_from}&date_to={d_to}&key={config.aviation_edge_key}")
-                    print(f"Requesting {url}")
-                    response = requests.get(url)
+                    try:
+                        response = self.do_request(url)
+                    except requests.RequestException as e:
+                        print(f"Request to {url} failed: {e}")
+                        continue
+
                     data = response.json()
                     if "error" in data:
                         print(f"Skipping {airport} ({data['error']})")
@@ -57,6 +63,11 @@ class DelayHistoryFetcher:
         print("All flights:")
         print(all_flights)
         return all_flights
+
+    @retry(stop=stop_after_attempt(3), wait=tenacity.wait_fixed(wait=3))
+    def do_request(self, url):
+        print(f"Requesting {url}")
+        return requests.get(url)
 
     def transform_flights(self, flights: DataFrame):
         print("\nCurrent stage: TRANSFORM\n")
