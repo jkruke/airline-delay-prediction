@@ -1,4 +1,4 @@
-#!/bin/python3
+#!/usr/bin/python3
 import os.path
 # This file will be scheduled by cron to run periodically
 
@@ -33,8 +33,9 @@ def get_delays():
                 return delays
 
             retries += 1
-            print("Request failed")
+            print("Request failed. Retrying...")
             time.sleep(config.error_download_wait_time)
+    print("Request failed :<")
     return None
 
 
@@ -48,12 +49,12 @@ def add_country_codes(delays, airports):
     return delays
 
 
-def get_alltime_delays(new_delays, known_delays_file=config.delay_file):
-    if not os.path.exists(known_delays_file):
-        print(f"{known_delays_file} does not exist - alltime delays will only contain the current (new) delays")
+def get_alltime_delays(new_delays, known_output_file=(config.output_dir + config.output_filename)):
+    if not os.path.exists(known_output_file):
+        print(f"{known_output_file} does not exist - alltime delays will only contain the current (new) delays")
         return new_delays
 
-    known_delays = pd.read_csv(known_delays_file)
+    known_delays = pd.read_csv(known_output_file)
     alltime_delays = pd.concat([known_delays, new_delays], ignore_index=True)
     # if we find identical flights, we only keep the most recent (from new_delays) one:
     alltime_delays = alltime_delays.drop_duplicates(subset=["flight_iata", "dep_time_utc"], keep="last")
@@ -73,13 +74,16 @@ def main():
         return
 
     print(f"Total delays worldwide: {len(delays)}")
-    airports = pd.read_json("data/airports.json")
+    # WARNING: HARD-CODED DIRECTORY PREFIX
+    airports = pd.read_json("/home/lam.t194787/airline-delay-prediction/extract/data/airports.json")
     delays = add_country_codes(delays, airports)
     delays["domestic"] = delays["arr_country_code"] == delays["dep_country_code"]
     delays["international"] = ~delays["domestic"]
-    delays = delays[constants.target_csv_columns]
+    #delays = delays[constants.target_csv_columns]
 
+    #print("All time delay")
     alltime_delays = get_alltime_delays(delays)
+    #print("All time delay2")
 
     #print("\nDelays:")
     #print(delays)
@@ -87,10 +91,14 @@ def main():
     #print(alltime_delays)
 
     # Write current delays to separate file
-    delays.to_csv(f"data/delays/delays-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", index=False)
+    delays.to_csv(f"{config.output_dir}/delays-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", index=False, mode='w')
     # Write alltime delays to delays file
-    alltime_delays.to_csv(config.delay_file, index=False)
+    print(f"Appending delays to {config.output_dir + config.output_filename}")
+    alltime_delays.to_csv(config.output_dir + config.output_filename, index=False, mode='a')
 
 
 if __name__ == '__main__':
+    print()
+    print(f"Fetching data at {datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
     main()
+    print("Done fetching data")
