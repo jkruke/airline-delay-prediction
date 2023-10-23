@@ -21,9 +21,8 @@ class DelayHistoryProcessor:
     INVALID_CSV = "data/history/flightsHistory_invalid.csv"
 
     # all civil airports in Vietnam:
-    airports = ["HAN", "SGN", "BMV", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "DLI",
-                "HUI", "UIH", "PQC", "PXU", "THD",
-                "VDO", "VII"]
+    AIRPORTS = ["HAN", "SGN", "BMV", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "DLI",
+                "HUI", "UIH", "PQC", "PXU", "THD", "VII"]
 
     def collect_flights(self):
         """
@@ -37,7 +36,7 @@ class DelayHistoryProcessor:
         while date_to <= max_date:
             print(f"Collecting time range: {date_from} to {date_to}:")
             for t in ["arrival", "departure"]:
-                for airport in self.airports:
+                for airport in self.AIRPORTS:
                     d_from = date_from.strftime("%Y-%m-%d")
                     d_to = date_to.strftime("%Y-%m-%d")
                     raw_result_file = f"{self.RAW_DATA_DIR}/{d_from}_{d_to}_{airport}_{t}.json"
