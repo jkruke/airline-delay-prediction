@@ -161,7 +161,7 @@ if __name__ == '__main__':
     pd.set_option('display.max_rows', 20)
 
     argParser = argparse.ArgumentParser()
-    argParser.add_argument("-m", "--mode", choices=["collect", "etl"],
+    argParser.add_argument("-m", "--mode", choices=["collect", "etl"], required=True,
                            help="Execution mode (collect: request API and save to JSON files, "
                                 "etl: do ETL based on the JSON files")
     args = argParser.parse_args()
