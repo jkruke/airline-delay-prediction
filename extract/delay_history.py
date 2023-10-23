@@ -82,7 +82,8 @@ class DelayHistoryProcessor:
                     data = json.load(rf)
                 dataframes.append(pd.json_normalize(data))
 
-        all_flights = pd.concat(dataframes, ignore_index=True)
+        all_flights = (pd.concat(dataframes, ignore_index=True)
+                       .drop_duplicates(subset=["flight.iataNumber", "departure.scheduledTime"], ignore_index=True))
         print("All flights:")
         print(all_flights)
         return all_flights
