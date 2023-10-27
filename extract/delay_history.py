@@ -15,7 +15,7 @@ from tenacity import retry, stop_after_attempt
 from config import config
 from constants import constants
 
-STATE_FILE = "data/history/history-state.json"
+STATE_FILE = f"{config.data_dir}/history/history-state.json"
 DATE_PATTERN = "%Y-%m-%d"
 
 
@@ -41,9 +41,9 @@ class State:
 
 
 class DelayHistoryProcessor:
-    RESULT_CSV = "data/history/flightsHistory.csv"
-    RAW_DATA_DIR = "data/history/flightsHistory_raw"
-    INVALID_CSV = "data/history/flightsHistory_invalid.csv"
+    RESULT_CSV = f"{config.data_dir}/history/flightsHistory.csv"
+    RAW_DATA_DIR = f"{config.data_dir}/history/flightsHistory_raw"
+    INVALID_CSV = f"{config.data_dir}/history/flightsHistory_invalid.csv"
 
     # all civil airports in Vietnam:
     AIRPORTS = ["HAN", "SGN", "BMV", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "DLI",
@@ -91,7 +91,7 @@ class DelayHistoryProcessor:
 
     @staticmethod
     def get_max_date():
-        return datetime.now() - timedelta(days=4)
+        return (datetime.now() - timedelta(days=4)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     def etl_flights(self):
         # ETL: extract-transform-load
@@ -148,7 +148,7 @@ class DelayHistoryProcessor:
 
     @staticmethod
     def add_country_codes(flights):
-        airports = pd.read_json("data/airports.json")
+        airports = pd.read_json(f"{config.data_dir}/airports.json")
         airports = airports[airports["iata_code"].notnull()]
 
         flights = pd.merge(flights, airports[["iata_code", "country_code"]], left_on="dep_iata", right_on="iata_code")
@@ -206,7 +206,7 @@ def main():
         processor.etl_flights()
     elif args.mode == "update":
         state = State.load_from_file()
-        if state.latest_date == processor.get_max_date():
+        if state.latest_date >= processor.get_max_date():
             print(f"Already up to date (latest data from {state.latest_date})")
             return
 
