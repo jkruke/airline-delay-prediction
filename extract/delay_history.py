@@ -1,9 +1,10 @@
 import argparse
 import json
-import math
 import os.path
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import math
 import pandas as pd
 import requests
 import tenacity
@@ -13,6 +14,30 @@ from tenacity import retry, stop_after_attempt
 
 from config import config
 from constants import constants
+
+STATE_FILE = "data/history/history-state.json"
+DATE_PATTERN = "%Y-%m-%d"
+
+
+@dataclass
+class State:
+    latest_date: datetime
+
+    def save_to_file(self):
+        with open(STATE_FILE, 'w') as f:
+            data = {'latest_date': self.latest_date.strftime(DATE_PATTERN)}
+            json.dump(data, f)
+
+    @staticmethod
+    def load_from_file():
+        if not os.path.isfile(STATE_FILE):
+            raise RuntimeError(f"{STATE_FILE} doesn't exist! Consider running --collect first.")
+
+        with open(STATE_FILE, 'r') as f:
+            data = json.load(f)
+
+        latest_date = datetime.strptime(data['latest_date'], DATE_PATTERN)
+        return State(latest_date=latest_date)
 
 
 class DelayHistoryProcessor:
@@ -24,21 +49,19 @@ class DelayHistoryProcessor:
     AIRPORTS = ["HAN", "SGN", "BMV", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "DLI",
                 "HUI", "UIH", "PQC", "PXU", "THD", "VII"]
 
-    def collect_flights(self):
+    def collect_flights(self, date_from: datetime):
         """
         Collects historical flights from Aviation Edge API and save results to separate JSON files
         """
-        dataframes = []
         day_range = 10
-        max_date = datetime.now() - timedelta(days=4)
-        date_from = datetime.now() - relativedelta(years=1) + timedelta(days=1)
-        date_to = date_from + timedelta(days=day_range)
-        while date_to <= max_date:
+        max_date = self.get_max_date()
+        while True:
+            date_to = min(date_from + timedelta(days=day_range), max_date)
             print(f"Collecting time range: {date_from} to {date_to}:")
             for t in ["arrival", "departure"]:
                 for airport in self.AIRPORTS:
-                    d_from = date_from.strftime("%Y-%m-%d")
-                    d_to = date_to.strftime("%Y-%m-%d")
+                    d_from = date_from.strftime(DATE_PATTERN)
+                    d_to = date_to.strftime(DATE_PATTERN)
                     raw_result_file = f"{self.RAW_DATA_DIR}/{d_from}_{d_to}_{airport}_{t}.json"
                     if os.path.isfile(raw_result_file):
                         print(f"{raw_result_file} already exists.")
@@ -59,9 +82,16 @@ class DelayHistoryProcessor:
                     with open(raw_result_file, "w") as file:
                         json.dump(data, file)
 
+            if date_to == max_date:
+                state = State(latest_date=date_to)
+                state.save_to_file()
+                print(f"Finished flight collection and saved state {state} to {STATE_FILE}.")
+                break
             date_from = date_to + timedelta(days=1)
-            date_to = date_from + timedelta(days=day_range)
-        return dataframes
+
+    @staticmethod
+    def get_max_date():
+        return datetime.now() - timedelta(days=4)
 
     def etl_flights(self):
         # ETL: extract-transform-load
@@ -155,22 +185,37 @@ class DelayHistoryProcessor:
         return flights
 
 
-if __name__ == '__main__':
+def main():
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
     pd.set_option('display.max_rows', 20)
-
-    argParser = argparse.ArgumentParser()
-    argParser.add_argument("-m", "--mode", choices=["collect", "etl"], required=True,
-                           help="Execution mode (collect: request API and save to JSON files, "
-                                "etl: do ETL based on the JSON files")
-    args = argParser.parse_args()
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("-m", "--mode", choices=["collect", "etl", "update"], required=True,
+                            help="Execution mode"
+                                 "collect: request API for largest possible history and save to JSON files."
+                                 "etl: do ETL based on the JSON files."
+                                 "update: do 'collect' + 'etl' for the most recent unseen history.")
+    args = arg_parser.parse_args()
     print(f"program arguments: {args}")
-
     processor = DelayHistoryProcessor()
     if args.mode == "collect":
-        processor.collect_flights()
+        # collect the maximum possible history
+        date_from = datetime.now() - relativedelta(years=1) + timedelta(days=1)
+        processor.collect_flights(date_from=date_from)
     elif args.mode == "etl":
         processor.etl_flights()
+    elif args.mode == "update":
+        state = State.load_from_file()
+        if state.latest_date == processor.get_max_date():
+            print(f"Already up to date (latest data from {state.latest_date})")
+            return
+
+        date_from = state.latest_date + relativedelta(days=1)
+        processor.collect_flights(date_from=date_from)
+        processor.etl_flights()
     else:
-        print("NOTHING TO DO!")
+        print("NOTHING TO DO! Run with --help for information about this program.")
+
+
+if __name__ == '__main__':
+    main()
