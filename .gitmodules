@@ -1,0 +1,3 @@
+[submodule "add-weather/ip2location-iata-icao"]
+	path = add-weather/ip2location-iata-icao
+	url = https://github.com/ip2location/ip2location-iata-icao
