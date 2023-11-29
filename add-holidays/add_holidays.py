@@ -1,3 +1,4 @@
+import sys
 from argparse import ArgumentParser
 
 import pandas as pd
@@ -75,6 +76,7 @@ def main():
     output_file = get_input_file()
     output_file = output_file.replace(".csv", "-holidays.csv")
     flights.to_csv(output_file, header=True, index=False)
+    print(f"Wrote result to {output_file}")
 
 
 if __name__ == '__main__':
