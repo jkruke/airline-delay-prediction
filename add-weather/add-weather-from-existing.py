@@ -21,10 +21,8 @@ print("Reading @weather data frame")
 weather = pd.read_csv(args.weather, header=0)
 print(">Done")
 
-print("Append weather info to arrival flights")
-delays = sqldf(f'''SELECT *
-				FROM delays AS d LEFT OUTER JOIN  
-					(SELECT iata, date,
+print("Renaming arrival/departure weather columns")
+arrival_weather = sqldf("""SELECT iata, date,
 							temperature_2m AS arr_temperature_2m,
 							relative_humidity_2m AS arr_relative_humidity_2m,
 							precipitation AS arr_precipitation,
@@ -37,17 +35,9 @@ delays = sqldf(f'''SELECT *
 							cloud_cover_high AS arr_cloud_cover_high,
 							wind_speed_10m AS arr_wind_speed_10m,
 							wind_speed_100m AS arr_wind_speed_100m,
-							wind_gusts_10m AS arr_wind_gusts_10m FROM weather) AS a
-				ON d.arr_iata = a.iata 
-					AND unixepoch(a.date) <= unixepoch(d.arr_time_utc) 
-			   		AND unixepoch(d.arr_time_utc) < (unixepoch(a.date) + 3600)''')
-print(delays)
+							wind_gusts_10m AS arr_wind_gusts_10m FROM weather""")
 
-
-print("Append weather info to departure flights")
-delays = sqldf(f'''SELECT *
-				FROM delays AS d LEFT OUTER JOIN  
-					(SELECT iata, date,
+departure_weather = sqldf("""SELECT iata, date,
 							temperature_2m AS dep_temperature_2m,
 							relative_humidity_2m AS dep_relative_humidity_2m,
 							precipitation AS dep_precipitation,
@@ -60,7 +50,22 @@ delays = sqldf(f'''SELECT *
 							cloud_cover_high AS dep_cloud_cover_high,
 							wind_speed_10m AS dep_wind_speed_10m,
 							wind_speed_100m AS dep_wind_speed_100m,
-							wind_gusts_10m AS dep_wind_gusts_10m FROM weather) AS dep
+							wind_gusts_10m AS dep_wind_gusts_10m FROM weather""")
+print(">Done")
+
+
+print("Append weather info to arrival flights")
+delays = sqldf(f'''SELECT *
+				FROM delays AS d JOIN arrival_weather as a
+				ON d.arr_iata = a.iata 
+					AND unixepoch(a.date) <= unixepoch(d.arr_time_utc) 
+			   		AND unixepoch(d.arr_time_utc) < (unixepoch(a.date) + 3600)''')
+print(delays)
+
+
+print("Append weather info to departure flights")
+delays = sqldf(f'''SELECT *
+				FROM delays AS d JOIN departure_weather AS dep
 				ON d.dep_iata = dep.iata 
 					AND unixepoch(dep.date) <= unixepoch(d.dep_time_utc) 
 			   		AND unixepoch(d.dep_time_utc) < (unixepoch(dep.date) + 3600)''')
