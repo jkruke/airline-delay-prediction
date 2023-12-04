@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # fetch new flight data from the API and save to extract/data/flightsHistory.csv
-#cd extract && python delay_history.py -m update && cd ..
+cd extract && python delay_history.py -m update && cd ..
 
 # add holiday information and save to extract/data/history/flightsHistory-holiday.csv
 python add-holidays/add_holidays.py extract/data/history/flightsHistory.csv
