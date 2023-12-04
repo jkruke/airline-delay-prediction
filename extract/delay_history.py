@@ -58,7 +58,7 @@ class DelayHistoryProcessor:
         while True:
             date_to = min(date_from + timedelta(days=day_range), max_date)
             print(f"Collecting time range: {date_from} to {date_to}:")
-            for t in ["arrival", "departure"]:
+            for t in ["arrival"]:
                 for airport in self.AIRPORTS:
                     d_from = date_from.strftime(DATE_PATTERN)
                     d_to = date_to.strftime(DATE_PATTERN)
@@ -100,22 +100,33 @@ class DelayHistoryProcessor:
         flights = self.clean_flights(flights)
         print("Historical flights after ETL:")
         print(flights)
-        flights.to_csv(self.RESULT_CSV, index=False)
+        flights.sort_values(by="dep_time_utc", ascending=True, inplace=True, ignore_index=True)
+        flights.index.name = "Row"
+        flights.to_csv(self.RESULT_CSV)
 
     def extract_flights(self):
         print("\nCurrent stage: EXTRACT\n")
+        n_codeshared = 0
+        n_total = 0
         dataframes = []
         for f in os.listdir(self.RAW_DATA_DIR):
             raw_file = os.path.join(self.RAW_DATA_DIR, f)
             if os.path.isfile(raw_file):
                 with open(raw_file) as rf:
                     data = json.load(rf)
-                dataframes.append(pd.json_normalize(data))
+                df = pd.json_normalize(data)
+                n_before = len(df)
+                n_total += n_before
+                if "codeshared.flight.number" in df:
+                    df = df[df["codeshared.flight.number"].isnull()]
+                n_codeshared += n_before - len(df)
+                dataframes.append(df)
 
-        all_flights = (pd.concat(dataframes, ignore_index=True)
-                       .drop_duplicates(subset=["flight.iataNumber", "departure.scheduledTime"], ignore_index=True))
-        print("All flights:")
-        print(all_flights)
+        all_flights = pd.concat(dataframes, ignore_index=True)
+        print(f"Removed {n_codeshared} code-shared flights")
+        n_flights = len(all_flights)
+        print(f"Keep {n_flights} out of {n_total} flights ({round(100 * n_flights / n_total)}%)")
+        print(all_flights.head(3))
         return all_flights
 
     @retry(stop=stop_after_attempt(3), wait=tenacity.wait_fixed(wait=1))
@@ -175,12 +186,20 @@ class DelayHistoryProcessor:
         invalid_flights.to_csv(self.INVALID_CSV, index=False)
 
         valid_flights.reset_index(drop=True, inplace=True)
-        flights = valid_flights
+        flights = valid_flights.copy()
 
+        def calc_delay(row):
+            if math.isnan(float(row['delayed'])):
+                return int((row['arr_actual_utc'] - row['arr_time_utc']).total_seconds() / 60)
+            return row['delayed']
         # calculate the delay in minutes and assign it to 'delayed' where it's missing
-        flights['delayed'] = flights.apply(lambda row: int((row['arr_actual_utc'] - row['arr_time_utc'])
-                                                           .total_seconds() / 60)
-        if math.isnan(float(row['delayed'])) else row['delayed'], axis=1)
+        flights['delayed'] = flights.apply(calc_delay, axis=1)
+
+        print("Removing duplicates, keep the last duplicate which probably contains the most recent times")
+        n_flights = len(flights)
+        flights.drop_duplicates(subset=["flight_iata", "dep_time_utc"],
+                                ignore_index=True, keep='last', inplace=True)
+        print(f"Removed {n_flights - len(flights)} duplicates")
 
         return flights
 
