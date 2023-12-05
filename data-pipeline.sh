@@ -7,4 +7,4 @@ cd extract && python delay_history.py -m update && cd ..
 python add-holidays/add_holidays.py extract/data/history/flightsHistory.csv
 
 # add weather information from all_weathers.csv and save to flightsHistory-weather.csv
-python add-weather/add-weather-from-existing.py add-weather/all_weathers.csv extract/data/history/flightsHistory-holidays.csv extract/data/history/flightsHistory-weather.csv
+python add-weather/add-weather-from-existing.py add-weather/data/weather.csv.gz extract/data/history/flightsHistory-holidays.csv extract/data/history/flightsHistory-weather.csv
