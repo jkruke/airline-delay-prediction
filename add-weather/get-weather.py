@@ -157,6 +157,7 @@ for weather_at_each_airport in responses:
     airport_weather_df = sqldf(f'''SELECT * from {airport_correspond_to_latlong} CROSS JOIN hourly_dataframe''')
     all_weathers_dfs.append(airport_weather_df)
 all_weathers_dfs = pd.concat(all_weathers_dfs)
+all_weathers_dfs.drop_duplicates(subset=["iata", "date"], ignore_index=True, inplace=True)
 print(">Done")
 
 print(f"Saving weather reports to {OUTFILE}")
