@@ -13,19 +13,20 @@
 # 
 # WARNING: SQLAlchemy 2.* has some problems parsing even simple query, so downgrade it to 1.4.46 is necessary
 
-# TODO: There are a lot of TODO-s. Ctrl+F to see each of them
-import pandas as pd
-from pandasql import sqldf  # Because working with sql is way simpler
-
 import datetime
 from argparse import ArgumentParser
 
 import openmeteo_requests
+import pandas as pd
 import requests_cache
+from pandasql import sqldf  # Because working with sql is way simpler
 from retry_requests import retry
 
+OUTFILE = f"../data/weather.csv.gz"
+AFFECTED_AIRPORTS_CSV = "../data/affected-airports.csv"
+
 parser = ArgumentParser(prog='get-weather', description='Write weather information to CSV file',
-                        epilog='Example usage: $> ./add-weather.py')
+                        epilog='Example usage: $> ./add-weather.py 2023-12-01 2023-12-02')
 parser.add_argument("--airports", help="CSV file listing airports' IATA/ICAO and latlong.",
                     metavar='airports_csv', default="ip2location-iata-icao/iata-icao.csv")
 parser.add_argument("FROM", help="Start date (yyyy-mm-dd)")
@@ -41,7 +42,7 @@ print(f"start_date: {start_date}")
 print(f"end_date: {end_date}")
 
 # Concat the result of two queries with python because SQLite doesn't have OUTER JOIN
-unique_iatas = pd.read_csv("data/affected-airports.csv")
+unique_iatas = pd.read_csv(AFFECTED_AIRPORTS_CSV)
 print(f"unique_iatas: {unique_iatas}")
 
 airport_locations = pd.read_csv(args.airports, header=0, usecols=["iata", "latitude", "longitude"])
@@ -59,7 +60,7 @@ longitudes = coordinates['longitude'].values.tolist()
 ## TWEAKED A LITTLE
 
 # Setup the Open-Meteo API client with cache and retry on error
-cache_session = requests_cache.CachedSession('data/.cache', expire_after=-1)
+cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
@@ -158,7 +159,6 @@ for weather_at_each_airport in responses:
 all_weathers_dfs = pd.concat(all_weathers_dfs)
 print(">Done")
 
-outfile = f"data/weather.csv.gz"
-print(f"Saving weather reports to {outfile}")
-all_weathers_dfs.to_csv(outfile, index=False, compression="gzip")
+print(f"Saving weather reports to {OUTFILE}")
+all_weathers_dfs.to_csv(OUTFILE, index=False, compression="gzip")
 print(">Done")
