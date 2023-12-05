@@ -1,6 +1,7 @@
 import argparse
 import json
 import os.path
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -44,10 +45,12 @@ class DelayHistoryProcessor:
     RESULT_CSV = f"{config.data_dir}/history/flightsHistory.csv"
     RAW_DATA_DIR = f"{config.data_dir}/history/flightsHistory_raw"
     INVALID_CSV = f"{config.data_dir}/history/flightsHistory_invalid.csv"
+    ETL_STATS_JSON = f"{config.data_dir}/history/etl-stats.json"
 
     # all civil airports in Vietnam:
     AIRPORTS = ["HAN", "SGN", "BMV", "CXR", "VCA", "HPH", "VCL", "VCS", "DAD", "DIN", "VDH", "TBB", "DLI",
                 "HUI", "UIH", "PQC", "PXU", "THD", "VII"]
+    etl_stats = {}
 
     def collect_flights(self, date_from: datetime):
         """
@@ -94,6 +97,7 @@ class DelayHistoryProcessor:
         return (datetime.now() - timedelta(days=4)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     def etl_flights(self):
+        start = time.time()
         # ETL: extract-transform-load
         flights = self.extract_flights()
         flights = self.transform_flights(flights)
@@ -103,6 +107,12 @@ class DelayHistoryProcessor:
         flights.sort_values(by="dep_time_utc", ascending=True, inplace=True, ignore_index=True)
         flights.index.name = "Row"
         flights.to_csv(self.RESULT_CSV)
+
+        self.etl_stats["date_from"] = str(flights.iloc[0]["dep_time_utc"])
+        self.etl_stats["date_to"] = str(flights.iloc[-1]["dep_time_utc"])
+        self.etl_stats["etl_time_s"] = time.time() - start
+        with open(self.ETL_STATS_JSON, "w") as f:
+            json.dump(self.etl_stats, f, indent=2)
 
     def extract_flights(self):
         print("\nCurrent stage: EXTRACT\n")
@@ -127,6 +137,8 @@ class DelayHistoryProcessor:
         n_flights = len(all_flights)
         print(f"Keep {n_flights} out of {n_total} flights ({round(100 * n_flights / n_total)}%)")
         print(all_flights.head(3))
+        self.etl_stats["raw"] = n_total
+        self.etl_stats["codeshared"] = n_codeshared
         return all_flights
 
     @retry(stop=stop_after_attempt(3), wait=tenacity.wait_fixed(wait=1))
@@ -184,6 +196,7 @@ class DelayHistoryProcessor:
         invalid_flights = flights[~flights.index.isin(valid_flights.index)]
         print(invalid_flights)
         invalid_flights.to_csv(self.INVALID_CSV, index=False)
+        self.etl_stats["missing_information"] = len(invalid_flights)
 
         valid_flights.reset_index(drop=True, inplace=True)
         flights = valid_flights.copy()
@@ -199,7 +212,9 @@ class DelayHistoryProcessor:
         n_flights = len(flights)
         flights.drop_duplicates(subset=["flight_iata", "dep_time_utc"],
                                 ignore_index=True, keep='last', inplace=True)
-        print(f"Removed {n_flights - len(flights)} duplicates")
+        n_duplicates = n_flights - len(flights)
+        print(f"Removed {n_duplicates} duplicates")
+        self.etl_stats["duplicate_iata_dep_time"] = n_duplicates
 
         return flights
 
